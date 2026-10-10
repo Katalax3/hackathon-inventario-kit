@@ -1,0 +1,57 @@
+# Servicio de inventario en contenedor. Requiere el kit arriba (`docker compose up -d` en la raíz),
+# porque se une a su red para hablar con el broker en redpanda:9092.
+#
+# Por defecto usa el PostgreSQL que ya corre en la máquina, en el puerto 5432:
+#   docker compose -f servicio-inventario/docker-compose.yml up -d --build
+#   docker compose -f servicio-inventario/docker-compose.yml logs -f guardian
+#
+# Si no tienen PostgreSQL, este archivo trae uno (perfil "db", también en el 5432):
+#   DATABASE_URL_DOCKER=postgresql://guardian:guardian@postgres:5432/inventario \
+#     docker compose -f servicio-inventario/docker-compose.yml --profile db up -d --build
+#
+# Reconstruir desde cero (regla 23):
+#   docker compose -f servicio-inventario/docker-compose.yml stop guardian
+#   docker compose -f servicio-inventario/docker-compose.yml run --rm guardian reset-db --yes
+#   docker compose -f servicio-inventario/docker-compose.yml start guardian
+
+services:
+  guardian:
+    build:
+      context: ..
+      dockerfile: servicio-inventario/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL_DOCKER:-postgresql://guardian:guardian@host.docker.internal:5432/inventario}
+      BROKER: redpanda:9092
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - kit
+
+  postgres:
+    profiles: ["db"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: guardian
+      POSTGRES_PASSWORD: guardian
+      POSTGRES_DB: inventario
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "guardian", "-d", "inventario"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pgdata:
+
+networks:
+  kit:
+    external: true
+    name: ${KIT_NETWORK:-hackathon-inventario-kit_default}

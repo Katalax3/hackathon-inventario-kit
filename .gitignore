@@ -1,0 +1,5 @@
+organizer/catalog.raw.json
+__pycache__/
+.venv/
+dist/
+saldo*.json
